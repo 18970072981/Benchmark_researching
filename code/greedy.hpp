@@ -1,18 +1,3 @@
-// This file is part of PGM-index <https://github.com/gvinciguerra/PGM-index>.
-// Copyright (c) 2018 Giorgio Vinciguerra.
-//
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
 #pragma once
 
 #include <algorithm>
@@ -30,10 +15,12 @@
 #include <omp.h>
 #else
 #pragma message("Compilation with -fopenmp is optional but recommended")
-#define omp_get_num_procs() 1
-#define omp_get_max_threads() 1
+#define omp_get_num_procs() 8
+#define omp_get_max_threads() 8
 #endif
 
+
+namespace greedy::internal {
 template <typename T>
 using LargeSigned = typename std::conditional_t<std::is_floating_point_v<T>,
                                                 long double,
@@ -217,6 +204,8 @@ public:
         Segment result =Segment(slope, intercept, first_x, last_x);
         return result;
     }
+
+		
 };
 
 template <typename Fin, typename Fout>
@@ -224,8 +213,8 @@ size_t make_segmentation(size_t n, size_t start, size_t end, double epsilon, Fin
 {
     using K = typename std::invoke_result_t<Fin, size_t>;
     size_t c = 0;
-    GreedyPiecewiseLinearModel<K, size_t> opt(epsilon);
-    auto add_point = [&](K x, size_t y)
+    GreedyPiecewiseLinearModel<K, int> opt(epsilon);
+    auto add_point = [&](K x, int y)
     {
         
         if (!opt.add_point(x, y))
@@ -274,10 +263,10 @@ size_t make_segmentation(size_t n, double epsilon, Fin in, Fout out)
 }
 
 template <typename Fin, typename Fout>
-size_t make_segmentation_par(size_t n, size_t epsilon, Fin in, Fout out)
+size_t make_segmentation_par(size_t n, size_t epsilon, Fin in, Fout out,int parallelism = 16)
 {
-    auto parallelism = std::min(std::min(omp_get_num_procs(), omp_get_max_threads()), 20);
-    printf("The number of threads is %d\n", parallelism);
+    
+    // printf("The number of threads is %d\n", parallelism);
     auto chunk_size = n / parallelism;
     auto c = 0ull;
 
@@ -285,7 +274,7 @@ size_t make_segmentation_par(size_t n, size_t epsilon, Fin in, Fout out)
         return make_segmentation(n, epsilon, in, out);
 
     using K = typename std::invoke_result_t<Fin, size_t>;
-    using canonical_segment = typename GreedyPiecewiseLinearModel<K, size_t>::CanonicalSegment;
+    using canonical_segment = typename GreedyPiecewiseLinearModel<K, int>::CanonicalSegment;
     std::vector<std::vector<canonical_segment>> results(parallelism);
 
 #pragma omp parallel for reduction(+ : c) num_threads(parallelism)
@@ -313,4 +302,55 @@ size_t make_segmentation_par(size_t n, size_t epsilon, Fin in, Fout out)
             out(cs);
 
     return c;
+}
+
+
+/**
+ * @brief A method to check the rightness of the segmentation of greedyPLR 
+ * 
+ * @tparam SegmentType 
+ * @param data 
+ * @param segments 
+ */
+template <typename SegmentType>
+void checkForEpsilon(std::vector<double> data, std::vector<SegmentType> segments){
+    
+    auto start = segments[0].first_x;
+    auto end = segments[10].last_x;
+    
+    int segmnt_idx = 0;
+    auto seg = segments[segmnt_idx];
+    auto slope = seg.slope;
+    auto intercept = seg.intercept;
+    auto first_x = seg.first_x;
+    auto last_x = seg.last_x;
+
+    int i = 0;
+    auto max_residual = std::numeric_limits<double>::min();
+    while (data[i] <= end)
+    {
+        if (data[i] == last_x)
+        {
+            // printout the max_residual
+            printf("The max_residual for Segment %d is %f\n",segmnt_idx,max_residual);
+            max_residual = std::numeric_limits<double>::min();
+           
+            segmnt_idx++;
+            if(segmnt_idx>=segments.size()){
+                break;
+            }
+            seg = segments[segmnt_idx];
+            slope = seg.slope;
+            intercept = seg.intercept;
+            first_x = seg.first_x;
+            last_x = seg.last_x;
+        }
+
+        auto residual = std::abs(i - (slope*data[i] + intercept));
+        if(residual>max_residual){
+            max_residual = residual;
+        }
+        i++;
+    }
+}
 }
