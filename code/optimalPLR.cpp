@@ -46,7 +46,7 @@ struct Segment
      * @brief Segements
      *
      */
-    double slope, intercept;
+    long double slope, intercept;
     int start_idx, end_idx;
     // [start_idx, end_idx]
 };
@@ -326,10 +326,10 @@ private:
  * @param out output data
  * @return size_t the number of the segments
  */
-size_t make_segmentation_par(int n, double epsilon, std::vector<Point> in, std::vector<Segment> &out)
+size_t make_segmentation_par(int n, double epsilon, std::vector<Point> in, std::vector<Segment> &out,int parallelism =16)
 {
-    int parallelism = omp_get_max_threads();
-    printf("The number of threads is %d\n", parallelism);
+    
+    // printf("The number of threads is %d\n", parallelism);
 
     int chunk_size = std::max(n / parallelism, 1000);  // Prevent too many threads for small `n`
 
@@ -396,69 +396,73 @@ void checkForEpsilon(const std::vector<Point> &points, const std::vector<Segment
 int main()
 {
     // Read the data first from txt file
-    std::ifstream file("../data/data2.txt");
+    std::ifstream file("../data/osmdata.txt");
     std::vector<Point> points(20000000);
     for(int i = 0; i < 20000000; i++){
         
-        file >> points[i].x >> points[i].y;
+        file >> points[i].x;
+        points[i].y = i;
         
     }
 
-    double epsilon = 32.0;
-    // The time taken for the serial version
-    auto start1 = std::chrono::high_resolution_clock::now();
+    std::vector<float> time_serial;
+    std::vector<int> seg_serial;
+    std::vector<float> time_parallel;
+    std::vector<int> seg_parallel;
 
-    OptimalPLR opt(epsilon);
-    std::vector<Segment> out_segments = opt.segmentData(points);
-    std::cout << "The size of the segements is " << out_segments.size() << std::endl;
-    auto end1 = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration1 = end1 - start1;
-    std::cout << "Time taken (serial): " << duration1.count() << " seconds\n";
+    
+    for(int i =8;i<13;i++){
+        double epsilon = 1<<i;
+        // The time taken for the serial version
+        auto start1 = std::chrono::high_resolution_clock::now();
 
-    // checkForEpsilon(points, out_segments);
+        OptimalPLR opt(epsilon);
+        std::vector<Segment> out_segments = opt.segmentData(points);
+        // std::cout << "The size of the segements is " << out_segments.size() << std::endl;
+        auto end1 = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration1 = end1 - start1;
+        time_serial.push_back(duration1.count());
+        seg_serial.push_back(out_segments.size());
+        // The time taken for the parallel version
+        out_segments.clear();
+        auto start = std::chrono::high_resolution_clock::now();
 
-    std::ofstream outFile("result/books_eps128.txt");  // Create and open a new file
+        size_t num_segments = make_segmentation_par(points.size(), epsilon, points, out_segments);
+        // std::cout << "The size of the segements is " << num_segments << std::endl;
 
-    if (outFile.is_open()) {
-        outFile<<"Slope "<<"Intercept "<<"Start Index "<<"End Index "<<"\n";
-        for(int i = 0;i<out_segments.size();i++){
-            outFile<<out_segments[i].slope<<" ";
-            outFile<<out_segments[i].intercept<<" ";
-            outFile<<out_segments[i].start_idx<<" ";
-            outFile<<out_segments[i].end_idx<<" ";
-            outFile<<"\n";
-        }
-        
-        outFile.close();  // Close the file
-        std::cout << "Data written successfully.\n";
-    } else {
-        std::cerr << "Error opening file.\n";
+        auto end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> duration = end - start;
+        time_parallel.push_back(duration.count());
+        seg_parallel.push_back(num_segments);
+
+        // checkForEpsilon(points, out_segments);
+
+        // long double max_residual = 0;
+        // for(int check = 0; check <10;check++){
+        //     printf("The segment %d is %Lf %Lf %d %d\n", check, out_segments[check].slope, out_segments[check].intercept, out_segments[check].start_idx, out_segments[check].end_idx);
+        //     for(int index = out_segments[check].start_idx; index < out_segments[check].end_idx; index++){
+        //         max_residual = std::max(max_residual, std::abs(points[index].y-out_segments[check].slope * points[index].x + out_segments[check].intercept));
+        //     }
+        // }
+        // printf("The max residual is %Lf\n", max_residual);
+    }
+
+    for(int i = 0;i<seg_serial.size();i++){
+        std::cout<<seg_serial[i] << "," ;
+    }
+    std::cout<<std::endl;
+    for(int i = 0;i<seg_parallel.size();i++){
+        std::cout<<seg_parallel[i] << ",";
+    }
+    std::cout<<std::endl;
+    for(int i = 0;i<time_serial.size();i++){
+        std::cout<<time_serial[i] << "," ;
+    }
+    std::cout<<std::endl;
+    for(int i = 0;i<time_parallel.size();i++){
+        std::cout<<time_parallel[i] << ",";
     }
     
-    
-
-
-    // The time taken for the parallel version
-    out_segments.clear();
-    auto start = std::chrono::high_resolution_clock::now();
-
-    size_t num_segments = make_segmentation_par(points.size(), epsilon, points, out_segments);
-    std::cout << "The size of the segements is " << num_segments << std::endl;
-
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    std::cout << "Time taken (parallel): " << duration.count() << " seconds\n";
-
-    // checkForEpsilon(points, out_segments);
-
-    double max_residual = 0;
-    for(int check = 0; check <10;check++){
-        printf("The segment %d is %f %f %d %d\n", check, out_segments[check].slope, out_segments[check].intercept, out_segments[check].start_idx, out_segments[check].end_idx);
-        for(int index = out_segments[check].start_idx; index < out_segments[check].end_idx; index++){
-            max_residual = std::max(max_residual, std::abs(points[index].y-out_segments[check].slope * points[index].x + out_segments[check].intercept));
-        }
-    }
-    printf("The max residual is %f\n", max_residual);
 
 
 }

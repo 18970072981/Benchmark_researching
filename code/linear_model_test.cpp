@@ -8,9 +8,10 @@
 #include <chrono>
 #include "linear_model.hpp"
 #include "optimalPLR_Foundation.hpp"
+#include "optimalPLR_Foundation.v.2.hpp"
 
-#define SAMPLE_SIZE 20000000
-#define FILE_NAME "../data/osmdata.txt"
+
+#define FILE_NAME "../data/fbdata.txt"
 #include <string> 
 
 /**
@@ -80,11 +81,14 @@ void printout(std::vector<Result> results_greedy,
  * 
  * @param data 
  */
-void load_data( std::vector<double> &data){
+template<typename K>
+void load_data( std::vector<K> &data){
     // Load the data from the file
     std::ifstream file(FILE_NAME);
-    for(int i = 0;i<SAMPLE_SIZE;i++){
-        file >> data[i];
+    K value;
+    for(int i = 0; i<=10000000;i++){
+        file>> value;
+        data.push_back(value);
     }
 }
 /**
@@ -114,7 +118,7 @@ Result experiment_GreedyPLR(std::vector<double> data,double epsilon = 32,int thr
     Result result;
 
     // Initialize the GreedyPiecewiseLinearModel and OptimalPiecewiseLinearModel and OptimalPLR  
-    using Segment= greedy::internal::GreedyPiecewiseLinearModel<double,int>::CanonicalSegment::Segment;
+    using Segment= Greedy::internal::GreedyPiecewiseLinearModel<double,int>::CanonicalSegment::Segment;
     auto result_segments_serial = std::vector<Segment>();
     auto result_segments_parallel = std::vector<Segment>();
     
@@ -133,21 +137,27 @@ Result experiment_GreedyPLR(std::vector<double> data,double epsilon = 32,int thr
     // Start the experiment of Greedyplr
     // The time taken for the serial version and the number of the segments
     auto start = std::chrono::high_resolution_clock::now();
-    size_t num_segments = greedy::internal::make_segmentation(data.size(), epsilon, in, out_serial);
+    size_t num_segments = Greedy::internal::make_segmentation(data.size(), epsilon, in, out_serial);
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> serial_duration = end - start;
     result.time_serial = serial_duration.count();
     result.seg_serial = num_segments;
+   
+    // Print out the result of the serial version
+    for(int i = 0;i < 10;i++){
     
+        printf("The %dth segment is (%f,%f) \n",i,result_segments_serial[i].first_x,result_segments_serial[i].last_x);
+        printf("The slope is %Lf and the intercept is %Lf\n",result_segments_serial[i].slope,result_segments_serial[i].intercept);
+    }
    
     start = std::chrono::high_resolution_clock::now();
-    num_segments = greedy::internal::make_segmentation_par(data.size(), epsilon, in, out_parallel,threads_num);
+    num_segments = Greedy::internal::make_segmentation_par(data.size(), epsilon, in, out_parallel,threads_num);
     end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> parallel_duration = end - start;
     // The time taken for the parallel version and the number of the segments
     result.time_parallel = parallel_duration.count();
     result.seg_parallel = num_segments;
-    // checkforepi_greplr(data,result_segments_serial);
+    Greedy::internal::checkForEpsilon(data,result_segments_serial);
     return result; 
            
 }
@@ -218,9 +228,9 @@ Result experiment_OptimalPLR(std::vector<double> data,double epsilon = 32,int th
     Result result;
 
     // Initialize the OptimalPLR  
-    using Segment = PGM::internal::Segment;
-    using Point = PGM::internal::Point;
-    using Model = PGM::internal::OptimalPLR;
+    using Segment = PGM_C::internal::Segment;
+    using Point = PGM_C::internal::Point;
+    using Model = PGM_C::internal::OptimalPLR;
 
     // Preprocess the data
     std::vector<Point> points(data.size());
@@ -234,27 +244,63 @@ Result experiment_OptimalPLR(std::vector<double> data,double epsilon = 32,int th
 
     Model opt(epsilon);
     std::vector<Segment> out_segments = opt.segmentData(points);
-    // std::cout << "The size of the segements is " << out_segments.size() << std::endl;
+    std::cout << "The size of the segements is " << out_segments.size() << std::endl;
     auto end1 = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> duration1 = end1 - start1;
     result.time_serial =duration1.count();
     result.seg_serial = out_segments.size();
     // The time taken for the parallel version
-    out_segments.clear();
-    auto start = std::chrono::high_resolution_clock::now();
+    // out_segments.clear();
+    // auto start = std::chrono::high_resolution_clock::now();
 
-    size_t num_segments = make_segmentation_par(points.size(), epsilon, points, out_segments,threads_num);
+    // size_t num_segments = make_segmentation_par(points.size(), epsilon, points, out_segments,threads_num);
     // std::cout << "The size of the segements is " << num_segments << std::endl;
 
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> duration = end - start;
-    result.time_parallel = duration.count();
-    result.seg_parallel = num_segments;
+    // auto end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> duration = end - start;
+    // result.time_parallel = duration.count();
+    // result.seg_parallel = num_segments;
 
+    PGM_C::internal::checkForEpsilon(points,out_segments);
 
     return result; 
 }
 
+template <typename K>
+Result experiment_OptimalPLRV2(std::vector<K> data,double epsilon = 32,int threads_num = 16){
+    // Intialize the results
+    Result result;
+
+    // Initialize the OptimalPLR  
+    using Segment = PGM_C2::internal::Segment<K>;
+    using Model = PGM_C2::internal::OptimalPLR<K,double>;
+
+
+    // Initialize the epsilon
+    auto start1 = std::chrono::high_resolution_clock::now();
+
+    Model opt(epsilon);
+    std::vector<Segment> out_segments = opt.segmentData(data);
+    std::cout << "The size of the segements is " << out_segments.size() << std::endl;
+    auto end1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration1 = end1 - start1;
+    result.time_serial =duration1.count();
+    result.seg_serial = out_segments.size();
+    printf("The time taken for the serial version is %f\n",result.time_serial);
+    
+
+    // The time taken for the parallel version
+    // out_segments.clear();
+    // auto start = std::chrono::high_resolution_clock::now();
+    // size_t num_segments = PGM_C2::internal::make_segmentation_par<K>(data.size(), epsilon, data, out_segments,threads_num);
+    // std::cout << "The size of the segements is " << num_segments << std::endl;
+    // auto end = std::chrono::high_resolution_clock::now();
+    // std::chrono::duration<double> duration = end - start;
+    // result.time_parallel = duration.count();
+
+    PGM_C2::internal::checkForEpsilon(data,out_segments);
+    return result; 
+}   
 
 /**
  * 
@@ -302,15 +348,14 @@ void experiment(std::vector<double> data,int start, int end,int threads_num = 16
 int main(){
     
     // Read the data from data1.txt
-    std::vector<double> data(SAMPLE_SIZE);
+    std::vector<double> data;
     load_data(data);
 
 
     // Experiment with the greedyPLR and OptimalPLR (PGM-Index & Customized)
     // experiment(data,start,end,threads_num);
-    experiment<double, int>(data,1,13);
-    // experiment(data,8,13,1);
-    // experiment(data,8,13,4); 
+    experiment_OptimalPLRV2<double>(data,4);
+    // experiment_OptimalPLR(data,4);
     return 0;
 }
 

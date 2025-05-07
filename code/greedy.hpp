@@ -20,7 +20,7 @@
 #endif
 
 
-namespace greedy::internal {
+namespace Greedy::internal {
 template <typename T>
 using LargeSigned = typename std::conditional_t<std::is_floating_point_v<T>,
                                                 long double,
@@ -316,7 +316,7 @@ template <typename SegmentType>
 void checkForEpsilon(std::vector<double> data, std::vector<SegmentType> segments){
     
     auto start = segments[0].first_x;
-    auto end = segments[10].last_x;
+    auto end = segments[0].last_x;
     
     int segmnt_idx = 0;
     auto seg = segments[segmnt_idx];
@@ -345,7 +345,8 @@ void checkForEpsilon(std::vector<double> data, std::vector<SegmentType> segments
             first_x = seg.first_x;
             last_x = seg.last_x;
         }
-
+        printf("The real position is %d and the approximate position is %Lf\n",i,(slope*data[i] + intercept));
+        printf("The residual is %Lf for %dth element\n",std::abs(i - (slope*data[i] + intercept)),i);
         auto residual = std::abs(i - (slope*data[i] + intercept));
         if(residual>max_residual){
             max_residual = residual;

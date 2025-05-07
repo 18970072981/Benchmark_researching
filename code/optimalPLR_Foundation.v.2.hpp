@@ -1,4 +1,5 @@
-/* Write your docstring here*/
+
+/* This is the v2.0 of optimalPLR foundation, specially designed for PGM-Index */
 /**
  * @file OptimalPLR_Foundation.hpp
  * @author Jiayong Qin (2057729401@qq.com)
@@ -30,26 +31,19 @@
 #include <chrono>
 
 
-namespace PGM_C::internal
+namespace PGM_C2::internal
 {
-typedef int K;
 
-struct Point
-{
-    /**
-     * @brief Data used to represent a point in 2D space
-     *
-     */
-    double x;
-    double y;
-    // Initialize the point
-    Point(double x = 0, double y = 0) : x(x), y(y) {};
-};
+template<typename T>
+using LargeSigned = typename std::conditional_t<std::is_floating_point_v<T>,
+                                                long double,
+                                                std::conditional_t<(sizeof(T) < 8), int64_t, __int128>>;
 
-struct Segment
-{
+ 
+template<typename K> 
+struct Segment{
     /**
-     * @brief Segements
+     * @brief Segments
      * @result the slope and intercept of the line
      * @result the start element of the segment
      */
@@ -59,7 +53,6 @@ struct Segment
 
     // Set the start_idx of the segment as key
     int key() const { return first_x; }
-    // [start_idx, end_idx]
     Segment(long double slope = 0, long double intercept = 0, K first_x = K(0), int seg_id = 0) : slope(slope), intercept(intercept), first_x(first_x) , seg_id(seg_id) {};
     
     friend inline bool operator<(const Segment &s, const K &k) { return s.key() < k; }
@@ -78,33 +71,33 @@ struct Segment
         
         return (slope * k + intercept);
     }
-
 };
 
-class OptimalPLR
-{
-
-public:
+template <typename X, typename Y>
+class OptimalPLR{
+  public:
     /**
      * @brief Construct a new OptimalPLR object
      *
      * @param error error bounds of this implementation
      */
-    OptimalPLR(double error) : epsilon(error) {}
+    OptimalPLR(int epsilon) : epsilon(epsilon) {}
 
-    std::vector<Segment> segmentData(const std::vector<Point> &points)
+    using Segment = PGM_C2::internal::Segment<X>;
+
+    std::vector<Segment> segmentData(const std::vector<X> &data)
     {
         std::vector<Segment> segments;
-        int seg_id = 0;
-        if (points.empty())
+        if (data.empty())
             return segments;
 
         // Initialization: the first two points acting as the initial hull and segement
         size_t start = 0;
-        Point sa = {points[0].x, points[0].y + epsilon};
-        Point sc = {points[1].x, points[1].y - epsilon};
-        Point sb = {points[0].x, points[0].y - epsilon};
-        Point sd = {points[1].x, points[1].y + epsilon};
+        Point sa = {data[0], 0 + epsilon};
+        Point sc = {data[1], 1 - epsilon};
+        Point sb = {data[0], 0 - epsilon};
+        Point sd = {data[1], 1 + epsilon};
+
 
         double rho_max = computeSlope(sb, sd);
         double rho_min = computeSlope(sa, sc);
@@ -112,66 +105,72 @@ public:
         std::deque<Point> upperHull = {sa, sd};
         std::deque<Point> lowerHull = {sb, sc};
 
-        for (size_t i = 2; i < points.size(); ++i)
+        for (int i = 2; i < data.size(); ++i)
         {
-            Point s = {points[i].x, points[i].y};
+            Point s = {data[i], i};
 
             if (!isWithinBounds(s, rho_max, sc, sd, rho_min))
             {
                 // Check if this point is within the bounds , if not , we need to update the segement and initialize again
-                Point so = findIntersection(sa, sc, sb, sd);
+                std::pair<double,double> so = findIntersection(sa, sc, sb, sd);
                 double finalSlope = (rho_min + rho_max) / 2;
-                segments.push_back({finalSlope, computeIntercept(so, finalSlope),points[start].x,seg_id++});
-
-                if(segments.size() < 10){
-                    printf("The so: %f,%f\n",so.x,so.y);
-                    printf("The sa is %f,%f\n",sa.x,sa.y);
-                    printf("The sb is %f,%f\n",sb.x,sb.y);
-                    printf("The sc is %f,%f\n",sc.x,sc.y);
-                    printf("The sd is %f,%f\n",sd.x,sd.y);
+                if(segments.size()<10){
+                    printf("The so: %f,%f\n",so.first,so.second);
+                }
+                double intercept = computeIntercept_for_intersection(so, finalSlope);
+                segments.push_back({finalSlope,intercept,data[start]});
+                
+                if(segments.size()<10){
+                    printf("The sa: %Lf,%Lf\n",sa.x,sa.y);
+                    printf("The sb: %Lf,%Lf\n",sb.x,sb.y);
+                    printf("The sc: %Lf,%Lf\n",sc.x,sc.y);
+                    printf("The sd: %Lf,%Lf\n",sd.x,sd.y);
                     printf("\n");
                 }
+
                 start = i;
-                sa = {points[start].x, points[start].y + epsilon};
-                sc = {points[i + 1].x, points[i + 1].y - epsilon};
-                sb = {points[start].x, points[start].y - epsilon};
-                sd = {points[i + 1].x, points[i + 1].y + epsilon};
+                sa = {data[start], i-1 + epsilon};
+                sc = {data[start + 1], i - epsilon};
+                sb = {data[start], i -1 - epsilon};
+                sd = {data[start + 1], i + epsilon};
 
                 rho_max = computeSlope(sb, sd);
                 rho_min = computeSlope(sa, sc);
                 upperHull.clear();
                 lowerHull.clear();
-                upperHull = {sa, sd};
-                lowerHull = {sb, sc};
+                upperHull.push_back(sa);
+                upperHull.push_back(sd);
+                lowerHull.push_back(sb);
+                lowerHull.push_back(sc);
                 i++;
 
                 continue;
             }
             else
             {
-                Point s_upper;
-                Point s_lower;
+                Point s_upper = {s.x, s.y + epsilon};
+                Point s_lower = {s.x, s.y - epsilon};
                 bool upper = 0;
                 bool lower = 0;
+                auto slope1 = static_cast<double>(s_lower - sa);
+                auto slope2 = static_cast<double>(s_upper - sb);
+                auto r_max = static_cast<double>(sd - sb );
+                auto r_min = static_cast<double>(sc - sa);
 
-                if (s.y - epsilon - sa.y > rho_min * (s.x - sa.x))
+                if ((s_lower - sa) > (sc - sa))
                 {
                     // Find the max slope point and delete the points before it so that we can update the min slope
                     lower = 1;
-                    s_lower.x = s.x;
-                    s_lower.y = s.y - epsilon;
                     sa = findMaxSlopePoint(upperHull, s_lower);
                     sc = s_lower;
                     deletePointsBefore(upperHull, sa);
                     rho_min = computeSlope(sa, sc);
                 }
 
-                if (s.y + epsilon - sb.y < rho_max * (s.x - sb.x))
+                if ((s_upper - sb) < (sd - sb))
                 {
                     // Find the min slope point and delete the points before it so that we can update the segement and the hull
                     upper = 1;
-                    s_upper.x = s.x;
-                    s_upper.y = s.y + epsilon;
                     sb = findMinSlopePoint(lowerHull, s_upper);
                     sd = s_upper;
                     deletePointsBefore(lowerHull, sb);
@@ -190,15 +189,37 @@ public:
             }
         }
 
-        Point so = findIntersection(sa, sc, sb, sd);
+        std::pair<double,double> so = findIntersection(sa, sc, sb, sd);
         double finalSlope = (rho_min + rho_max) / 2;
-        segments.push_back({finalSlope, computeIntercept(so, finalSlope), points[start].x, seg_id++});
+        segments.push_back({finalSlope, computeIntercept_for_intersection(so, finalSlope), data[start]});
 
         return segments;
     }
 
 private:
-    double epsilon;
+    int epsilon;
+
+    using SX = LargeSigned<X>;
+    using SY = LargeSigned<Y>;
+
+    struct Slope{
+        SX dx{};
+        SY dy{};
+
+        bool operator<(const Slope &p) const { return dy * p.dx < dx * p.dy; }
+        bool operator>(const Slope &p) const { return dy * p.dx > dx * p.dy; }
+        bool operator==(const Slope &p) const { return dy * p.dx == dx * p.dy; }
+        bool operator!=(const Slope &p) const { return dy * p.dx != dx * p.dy; }
+        explicit operator double() const { return dy / (double) dx; }
+ 
+    };
+
+    struct Point{
+        SX x{};
+        SY y{};
+        Slope operator-(const Point &p) const { return {SX(x) - p.x, SY(y) - p.y}; }
+ 
+    };
 
     /**
      * @brief compute the slope between two points
@@ -211,7 +232,9 @@ private:
     {
         if (p2.x == p1.x)
             return std::numeric_limits<double>::infinity();
-        return (p2.y - p1.y) / (p2.x - p1.x);
+       
+        double slope = static_cast<double>(p1 - p2);
+        return slope;
     }
 
     /**
@@ -223,7 +246,12 @@ private:
      */
     double computeIntercept(const Point &p, double slope)
     {
-        return p.y - slope * p.x;
+        return double(p.y) - slope * p.x;
+    }
+    // Specialized for intersection point 
+    double computeIntercept_for_intersection(std::pair<double,double> &p, double slope)
+    {
+        return p.second - slope * p.first;
     }
 
     /**
@@ -241,7 +269,7 @@ private:
      */
     bool isWithinBounds(const Point &s, double rho_max, Point sc, Point sd, double rho_min)
     {
-        return (s.y + epsilon >= rho_min * (s.x - sc.x) + sc.y) && (s.y - epsilon <= rho_max * (s.x - sd.x) + sd.y);
+        return (s.y + epsilon >= rho_min * (s.x- sc.x) + sc.y) && (s.y- epsilon <= rho_max * (s.x- sd.x) + sd.y);
     }
 
     /**
@@ -281,8 +309,8 @@ private:
      */
     bool isRedundant(const Point &p1, const Point &p2, const Point &p3, bool upper)
     {
-        double slope1 = (p2.y - p1.y) / (p2.x - p1.x);
-        double slope2 = (p3.y - p2.y) / (p3.x - p2.x);
+        double slope1 = static_cast<double>(p2 - p1);
+        double slope2 = static_cast<double>(p3 - p2);
         return upper ? (slope1 >= slope2) : (slope1 <= slope2);
     }
 
@@ -321,7 +349,7 @@ private:
      */
     void deletePointsBefore(std::deque<Point> &hull, const Point &reference)
     {
-        while (!hull.empty() && hull.front().x < reference.x)
+        while (!hull.empty() && hull[0].x < reference.x)
         {
             hull.pop_front();
         }
@@ -336,53 +364,39 @@ private:
      * @param sd
      * @return Point
      */
-    Point findIntersection(Point sa, Point sc, Point sb, Point sd)
+    std::pair<double,double> findIntersection(Point sa, Point sc, Point sb, Point sd)
     {
         double a1 = computeSlope(sa, sc);
         double b1 = computeIntercept(sa, a1);
-
         double a2 = computeSlope(sb, sd);
         double b2 = computeIntercept(sb, a2);
 
         if (a1 == a2)      // Parallel lines
             return {0, 0}; // or handle as needed
-        double x_intersect = (b2 - b1) / (a1 - a2);
+        double x_intersect = (double)(b2 - b1) / (double)(a1 - a2);
         double y_intersect = a1 * x_intersect + b1;
 
         return {x_intersect, y_intersect};
     }
 };
 
+
 /**
-     * @brief Translate the segments in [first,last) into points
-     * 
-     * @tparam RandomIt the iterator of pointed segment 
-     */
-    auto translate(std::vector<Segment>segments,int first, int last) -> std::vector<Point>{
-
-        
-        std::vector<Point> internal_nodes;    
-       
-        int n = last - first;
-        if(n == 0)
-            return internal_nodes;
-        
-        internal_nodes.clear();
-        internal_nodes.reserve(n);
-        for(auto it = first; it < last;++it){
-            // Get the first_idx and the seg_id of this segment
-            Segment seg = segments[it];
-            Point p(seg.first_x,seg.seg_id);
-            internal_nodes.push_back(p);
-        }
-
-        return internal_nodes;
-    }
-
-size_t make_segmentation(int n, double epsilon, 
-                            std::vector<Point> in, std::vector<Segment> &out)
+ * @brief Make segmentation of the data
+ *
+ * @tparam Fin the input data type
+ * @tparam Fout the output data type
+ * @param n the size of the data
+ * @param epsilon error boundary
+ * @param in input data
+ * @param out output data
+ * @return size_t the number of the segments
+ */
+template <typename X, typename Y>
+size_t make_segmentation(int n, int epsilon, 
+                            std::vector<X> in, std::vector<Segment<X>> &out)
 {
-    OptimalPLR opt(epsilon);
+    PGM_C2::internal::OptimalPLR<X,Y> opt(epsilon);
     auto segments = opt.segmentData(in);
     out.insert(out.end(), segments.begin(), segments.end());
     return segments.size();
@@ -399,8 +413,9 @@ size_t make_segmentation(int n, double epsilon,
  * @param out output data
  * @return size_t the number of the segments
  */
-size_t make_segmentation_par(int n, double epsilon, 
-                            std::vector<Point> in, std::vector<Segment> &out,
+template <typename X,typename Y>
+size_t make_segmentation_par(int n, int epsilon, 
+                            std::vector<X> in, std::vector<Segment<X>> &out,
                             int parallelism =16)
 {
     
@@ -410,8 +425,8 @@ size_t make_segmentation_par(int n, double epsilon,
 
     if (parallelism == 1 || n < 1ull << 15)
         return make_segmentation(n, epsilon, in, out);
-    OptimalPLR opt(epsilon);
-    std::vector<std::vector<Segment>> local_segments(parallelism);
+    OptimalPLR<X,Y> opt(epsilon);
+    std::vector<std::vector<Segment<X>>> local_segments(parallelism);
 
     size_t total_segments = 0;
 
@@ -446,7 +461,8 @@ size_t make_segmentation_par(int n, double epsilon,
  * @param first 
  * @param last 
  */
-void checkForEpsilon(std::vector<Point> data, std::vector<Segment> segments, int first = 0, int last = 5){
+template <typename K>
+void checkForEpsilon(std::vector<K> data, std::vector<Segment<K>> segments, int first = 0, int last = 5){
     
     auto start = segments[first].first_x;
     auto end = segments[last].first_x;
@@ -460,14 +476,15 @@ void checkForEpsilon(std::vector<Point> data, std::vector<Segment> segments, int
 
     int i = 0;
     auto max_residual = std::numeric_limits<double>::min();
-    while (data[i].x <= end)
+    while (data[i] <= end)
     {
-        if (data[i].x == last_x)
+        if (data[i] == last_x)
         {
             // printout the max_residual
+            
             printf("The %dth segment is (%f,%f) \n",segmnt_idx,first_x,last_x);
             printf("The slope is %f and the intercept is %f\n",slope,intercept);
-            
+               
             printf("The max_residual for Segment %d is %f\n",segmnt_idx,max_residual);
             max_residual = std::numeric_limits<double>::min();
            
@@ -481,9 +498,9 @@ void checkForEpsilon(std::vector<Point> data, std::vector<Segment> segments, int
             first_x = seg.first_x;
             last_x = segments[segmnt_idx+1].first_x;
         }
-        printf("The real position is %d and the approximate position is %f\n",data[i].y,(slope*data[i].x + intercept));
-        printf("The residual is %f for %dth element\n",std::abs(i - (slope*data[i].x + intercept)),i);
-        auto residual = std::abs(i - (slope*data[i].x + intercept));
+        printf("The real position is %d and the approximate position is %f\n",i,(slope*data[i] + intercept));
+        printf("The residual is %f for %dth element\n",std::abs(i - (slope*data[i] + intercept)),i);
+        auto residual = std::abs(i - (slope*data[i] + intercept));
         if(residual>max_residual){
             max_residual = residual;
         }

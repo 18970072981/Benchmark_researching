@@ -104,19 +104,14 @@ public:
         }
 
         if (points_in_hull == 1) {
-            rectangle[2] = p2;
-            rectangle[3] = p1;
+            rectangle[2] = p2; rectangle[3] = p1;
             upper.push_back(p1);
             lower.push_back(p2);
             ++points_in_hull;
-            return true;
-        }
-
+            return true; }
         auto slope1 = rectangle[2] - rectangle[0];
         auto slope2 = rectangle[3] - rectangle[1];
-        bool outside_line1 = p1 - rectangle[2] < slope1;
-        bool outside_line2 = p2 - rectangle[3] > slope2;
-
+        bool outside_line1 = p1 - rectangle[2] < slope1; bool outside_line2 = p2 - rectangle[3] > slope2;
         if (outside_line1 || outside_line2) {
             points_in_hull = 0;
             return false;
