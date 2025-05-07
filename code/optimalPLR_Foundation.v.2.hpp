@@ -4,7 +4,7 @@
  * @file OptimalPLR_Foundation.hpp
  * @author Jiayong Qin (2057729401@qq.com)
  * @brief
- * @version 1.0
+ * @version 2.0
  * @date 2025-2-28
  *
  * @copyright Copyright (c) 2025
@@ -129,10 +129,10 @@ class OptimalPLR{
                 }
 
                 start = i;
-                sa = {data[start], i-1 + epsilon};
-                sc = {data[start + 1], i - epsilon};
-                sb = {data[start], i -1 - epsilon};
-                sd = {data[start + 1], i + epsilon};
+                sa = {data[start], i + epsilon};
+                sc = {data[start + 1], i+1 - epsilon};
+                sb = {data[start], i - epsilon};
+                sd = {data[start + 1], i+1 + epsilon};
 
                 rho_max = computeSlope(sb, sd);
                 rho_min = computeSlope(sa, sc);
@@ -152,12 +152,10 @@ class OptimalPLR{
                 Point s_lower = {s.x, s.y - epsilon};
                 bool upper = 0;
                 bool lower = 0;
-                auto slope1 = static_cast<double>(s_lower - sa);
-                auto slope2 = static_cast<double>(s_upper - sb);
-                auto r_max = static_cast<double>(sd - sb );
-                auto r_min = static_cast<double>(sc - sa);
+                auto slope1 = computeSlope(s_lower , sa);
+                auto slope2 = computeSlope(s_upper , sb);
 
-                if ((s_lower - sa) > (sc - sa))
+                if (slope1 > rho_min)
                 {
                     // Find the max slope point and delete the points before it so that we can update the min slope
                     lower = 1;
@@ -167,7 +165,7 @@ class OptimalPLR{
                     rho_min = computeSlope(sa, sc);
                 }
 
-                if ((s_upper - sb) < (sd - sb))
+                if (slope2 < rho_max)
                 {
                     // Find the min slope point and delete the points before it so that we can update the segement and the hull
                     upper = 1;
